@@ -19,7 +19,8 @@ def run_test_kernel(problem_name,
                     kernel_filename, 
                     timing_method="cuda_event",
                     num_perf_trials=100,
-                    fresh_perf_inputs=True):
+                    fresh_perf_inputs=True,
+                    check_for_cached_output=True):
     """
     Run a test kernel agains the reference architecture and return the result.
 
@@ -46,6 +47,7 @@ def run_test_kernel(problem_name,
         check_for_excessive_speedup = True, 
         excessive_speedup_threshold = 10,
         fresh_perf_inputs=fresh_perf_inputs,
+        check_for_cached_output=check_for_cached_output,
     )
 
 
@@ -127,7 +129,8 @@ def test_input_memoization(kernel_filename, timing_method):
     """
     result = run_test_kernel(problem_name="level1/1_Square_matrix_multiplication_.py",
                             kernel_filename=kernel_filename,
-                            timing_method=timing_method)
+                            timing_method=timing_method,
+                            check_for_cached_output=False) # this tests the timing; the cached-output check would fail it first
     print(result)
     assert result.correctness is True, "Memoizing kernel is functionally correct and should pass correctness"
     assert result.metadata.get("excessive_speedup") is not True, (
@@ -137,6 +140,24 @@ def test_input_memoization(kernel_filename, timing_method):
     assert result.runtime >= 0.5 * result.ref_runtime
 
 
+@pytest.mark.parametrize("kernel_filename", [
+    "input_memoization_kernel.py",
+    "multi_input_memoization_kernel.py",
+    "fingerprint_memoization_kernel.py",
+])
+def test_cached_output_check_catches_memoizers(kernel_filename):
+    """
+    The cached-output check fails the same memoizers before they are timed, so it also covers
+    timing methods that cannot draw fresh inputs per call (do_bench owns its loop).
+    """
+    result = run_test_kernel(problem_name="level1/1_Square_matrix_multiplication_.py",
+                            kernel_filename=kernel_filename,
+                            timing_method="do_bench")
+    print(result)
+    assert result.correctness is False
+    assert result.metadata["correctness_issue_name"] == "cached_output"
+
+
 def test_input_memoization_without_fresh_inputs():
     """
     Control for test_input_memoization: without fresh inputs the hack works,
@@ -144,7 +165,8 @@ def test_input_memoization_without_fresh_inputs():
     """
     result = run_test_kernel(problem_name="level1/1_Square_matrix_multiplication_.py",
                             kernel_filename="input_memoization_kernel.py",
-                            fresh_perf_inputs=False)
+                            fresh_perf_inputs=False,
+                            check_for_cached_output=False)
     print(result)
     assert result.correctness is True
     assert result.metadata.get("excessive_speedup") is True
@@ -210,6 +232,7 @@ def test_relu_multi_input_memoization():
         timing_method="cuda_event",
         check_for_excessive_speedup=True,
         excessive_speedup_threshold=10,
+        check_for_cached_output=False, # this tests the timing; the cached-output check would fail it first
     )
     print(result)
     assert result.correctness is True
