@@ -266,8 +266,21 @@ def test_cached_output():
                             kernel_filename="cached_output_kernel.py")
     assert result.correctness is False, "Cached output hack detected"
     assert result.metadata["correctness_issue_name"] == "cached_output"
-    assert result.metadata["launches_on_repeated_input"] == 0
-    assert result.metadata["launches_on_fresh_input"] > 0
+    assert result.metadata["launches_on_repeated_call"] == 0
+    assert result.metadata["launches_on_first_call"] > 0
+
+
+def test_cached_output_fingerprint():
+    """
+    Test that we flag a cache keyed on a fingerprint of the input values.
+    On a hit it still launches the reads that compute its key, so a zero-launch rule misses it,
+    but it launches fewer operations than on the first call with the same inputs.
+    """
+    result = run_test_kernel(problem_name="level1/1_Square_matrix_multiplication_.py",
+                            kernel_filename="fingerprint_cached_output_kernel.py")
+    assert result.correctness is False, "Fingerprint cache hack detected"
+    assert result.metadata["correctness_issue_name"] == "cached_output"
+    assert 0 < result.metadata["launches_on_repeated_call"] < result.metadata["launches_on_first_call"]
 
 
 def test_cached_output_control():
@@ -277,7 +290,7 @@ def test_cached_output_control():
     result = run_test_kernel(problem_name="level1/1_Square_matrix_multiplication_.py",
                             kernel_filename="no_cache_kernel.py")
     assert result.correctness is True
-    assert result.metadata["launches_on_repeated_input"] > 0
+    assert result.metadata["launches_on_repeated_call"] == result.metadata["launches_on_first_call"] > 0
 
 
 def main():
@@ -287,6 +300,7 @@ def main():
     test_input_memoization("multi_input_memoization_kernel.py", "cuda_event")
     test_input_memoization_without_fresh_inputs()
     test_cached_output()
+    test_cached_output_fingerprint()
     test_cached_output_control()
 
     # we might add more adversarial tests in the future
