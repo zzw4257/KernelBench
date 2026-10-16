@@ -252,6 +252,32 @@ def test_fresh_inputs_memory_does_not_grow_with_trials():
     # a pool with one set per trial would need num_trials sets
     assert peaks[50] < 4 * set_bytes, f"peak {peaks[50] / 2**30:.2f} GiB, expected about 3 GiB"
     assert peaks[50] <= peaks[10] * 1.1, "peak memory should not grow with the number of trials"
+def test_cached_output():
+    """
+    Test that we flag a kernel that caches its output keyed on the input tensors.
+
+    Methodology:
+    - Adversarial kernel computes the correct result on new inputs, so it passes every correctness trial
+    - Called again on the same input tensors, it returns the stored output without launching GPU work
+    - The timing loop reuses one set of inputs, so the cached calls would be timed as near zero
+    - Eval should flag it as incorrect: no GPU launches on a repeated input, some on a fresh one (issue #171)
+    """
+    result = run_test_kernel(problem_name="level1/1_Square_matrix_multiplication_.py",
+                            kernel_filename="cached_output_kernel.py")
+    assert result.correctness is False, "Cached output hack detected"
+    assert result.metadata["correctness_issue_name"] == "cached_output"
+    assert result.metadata["launches_on_repeated_input"] == 0
+    assert result.metadata["launches_on_fresh_input"] > 0
+
+
+def test_cached_output_control():
+    """
+    Control for test_cached_output: the same matmul without a cache launches GPU work on every call and passes.
+    """
+    result = run_test_kernel(problem_name="level1/1_Square_matrix_multiplication_.py",
+                            kernel_filename="no_cache_kernel.py")
+    assert result.correctness is True
+    assert result.metadata["launches_on_repeated_input"] > 0
 
 
 def main():
@@ -260,6 +286,8 @@ def main():
     test_non_default_stream()
     test_input_memoization("multi_input_memoization_kernel.py", "cuda_event")
     test_input_memoization_without_fresh_inputs()
+    test_cached_output()
+    test_cached_output_control()
 
     # we might add more adversarial tests in the future
 
